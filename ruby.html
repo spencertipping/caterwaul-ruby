@@ -4078,9 +4078,12 @@ Comment nodes are stored in the usual kind of form; that is, they're unary nodes
 | caterwaul.ruby('# hi there\nfoo').comments[0].data            // -> '#'
   caterwaul.ruby('# hi there\nfoo').comments[0][0].data         // -> 'hi there'
   caterwaul.ruby('# hi there\nfoo').comments[0].comments        // -> null
+  caterwaul.ruby('# hi there\nfoo').comments[0].position        // -> {line: 0, column: 0}
   caterwaul.ruby('# hi there\nfoo').comments[0][0].position     // -> {line: 0, column: 2}
 
-
+Implementation.
+Most syntax forms are parsed in a straightforward way, though some are more involved. Invocation nodes are probably the most different from the way they're represented in Javascript. Both the
+receiver and the optional block are children of the () node.
 
 __
 meta::sdoc('js::test', <<'__');
