@@ -1,6 +1,5 @@
 A Ruby parser for Caterwaul. This parser generates Caterwaul source trees so
 that you can use Caterwaul macros against Ruby source, ultimately transforming
-it into either more Ruby or into Javascript.
-
-Note that Ruby source trees are no longer instances of caterwaul.syntax, since
-they require different serialization logic.
+it into either more Ruby or into Javascript. (I'm not necessarily committing to
+a Javascript Ruby runtime in this project, but it wouldn't be too difficult to
+implement given the AST.)
