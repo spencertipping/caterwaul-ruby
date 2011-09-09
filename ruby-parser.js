@@ -61,17 +61,25 @@
 caterwaul.js_all()(function ($) {
   $.ruby.syntax = ctor /-$.syntax_subclass/ methods
 
-  -where [ctor(data) = this -se [it.data = data, it._comments = [], it._position = null, Array.prototype.slice.call(arguments, 1) *![this.push(x)] -seq],
-          methods    = capture [comments()       = this._comments,
-                                comment(c)       = this -se- it._comments.push(c),
-                                position(p)      = p ? this -se [it._position = p] : this._position,
+  -where [ctor(xs = arguments) = xs[0] instanceof this.constructor ?
+                                   this -se [it.data = x.data, it.length = 0, it.metadata_from(x), x *![it.push(x)] -seq] :
+                                   this -se [it.data = xs[0],  it.length = 0, it._comments = [], it._position = null, Array.prototype.slice.call(xs, 1) *![this.push(x)] -seq],
 
-                                replicate(data)  = new this.constructor(data).metadata_from(this) -se [Array.prototype.slice.call(arguments, 1) *![it.push(x)] -seq],
+          methods              = capture [comments()                = this._comments,
+                                          comment(c)                = this -se- it._comments.push(c),
+                                          position(p)               = arguments.length ? this -se [it._position = p] : this._position,
 
-                                metadata_from(n) = this -se [it._comments = n._comments, it._position = n._position],
-                                rotate_left()    = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
+                                          position_map(m)           = this.position(m[this.position()]).each("_.position_map(m)".qf),
 
-  $.ruby.parse(s) = $.ruby.parser([new $.parser.linear_string_state(s.toString())]) -re- it[0].value() /when.it,
+                                          replicate(xs = arguments) = new this.constructor(xs[0]).metadata_from(this) -se [Array.prototype.slice.call(xs, 1) *![it.push(x)] -seq],
+
+                                          metadata_from(n)          = this -se [it._comments = n._comments, it._position = n._position],
+                                          rotate_left()             = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
+
+  $.ruby.parse(s) = tree.value().position_map(input /!position_map) -where [input           = s.toString(),
+                                                                            tree            = [new $.parser.linear_string_state(input)] /!$.ruby.parser -re- it[0],
+                                                                            position_map(s) = n[s.length] *[s.charCodeAt(x)] *[{line: l += x === 10, column: c = x === 10 ? -1 : c + 1}] -seq
+                                                                                              -where [l = 0, c = -1]],
   $.ruby.parser = toplevel
 
   -where [toplevel(states)   = expression(states),
@@ -80,11 +88,14 @@ caterwaul.js_all()(function ($) {
           // Filters
           co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
           wo(parser)         = whitespace /!optional /-bfs/ parser,                                                             // <- optional whitespace before parser
+          positional(parser) = parser /-map_state/ "_.value().position(_.position()) -re- _".qf,
           r                  = linear_regexp,
 
           // Terminals
           terminal(parser)   = parser /-map/ "new node(_)".qf,
-          rt(regexp)         = regexp /!r /!terminal,
+          rt(regexp)         = regexp /!r /!terminal /!positional,
+
+          whitespace         = r(/\s+/),
           line_comment       = rt(/#.*[\n\r]{1,2}/),
           identifier         = rt(/\w+[?!]?/),
           global             = rt(/\$\w+[?!]?/),
@@ -111,15 +122,14 @@ caterwaul.js_all()(function ($) {
                                -where [ops1 = ". ** * / % + - << >> & | ^ < <= > >= <=> == === != =~ !~ && || .. ... rescue = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw,
                                        ops2 = "and or if unless while until".qw],
 
-          fix_precedence(n)  = precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
+          fix_precedence(n)  = +precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
           zip_unary(xs)      = new node(xs[0], xs[1]),
           zip_binary(xs)     = new node(xs[1], xs[0], xs[2]),
 
           expression(states) = expression(states),
 
-          binary             = leaf /binary_operator /-bfc/ expression /-map/ zip_binary /-map/ fix_precedence,
+          binary             = leaf /wo(binary_operator) /-bfc/ wo(expression) /-map/ zip_binary /-map/ fix_precedence,
           unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
-
           expression         = binary /unary /-alt/ leaf],
 
   using [caterwaul.parser]})(caterwaul);
