@@ -87,46 +87,58 @@ caterwaul.js_all()(function ($) {
                                 metadata_from(n) = this -se [it._comments = n._comments, it._position = n._position],
                                 rotate_left()    = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
 
-  $.ruby.parse(s) = $.ruby.parser(new linear_string_state(s.toString())) -re [it[0].value() -when [it.length] -when.it],
+  $.ruby.parse(s) = $.ruby.parser([new $.parser.linear_string_state(s.toString())]) -re- it[0].value() /when.it,
   $.ruby.parser = toplevel
 
-  -where [toplevel(states)  = expression(states),
-          node              = $.ruby.syntax,
+  -where [toplevel(states)   = expression(states),
+          node               = $.ruby.syntax,
 
           // Filters
-          co(parser)        = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                      // <- optional line comment before parser
-          wo(parser)        = whitespace /!optional /-bfs/ parser,                                                              // <- optional whitespace before parser
-          r                 = linear_regexp,
+          co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
+          wo(parser)         = whitespace /!optional /-bfs/ parser,                                                             // <- optional whitespace before parser
+          r                  = linear_regexp,
 
           // Terminals
-          terminal(parser)  = parser /-map/ "new node(_)".qf,
-          rt(regexp)        = regexp /!r /!terminal,
-          line_comment      = rt(/#.*[\n\r]{1,2}/),
-          identifier        = rt(/\w+[?!]?/),
-          global            = rt(/\$\w+[?!]?/),
-          instance_variable = rt(/@\w+[?!]?/),
-          symbol            = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
-          number            = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
-          regexp            = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                       // <- FIXME add flags
+          terminal(parser)   = parser /-map/ "new node(_)".qf,
+          rt(regexp)         = regexp /!r /!terminal,
+          line_comment       = rt(/#.*[\n\r]{1,2}/),
+          identifier         = rt(/\w+[?!]?/),
+          global             = rt(/\$\w+[?!]?/),
+          instance_variable  = rt(/@\w+[?!]?/),
+          symbol             = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
+          number             = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
+          regexp             = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                      // <- FIXME add flags
 
-          literal           = global /symbol /number /-alt/ regexp,                                                             // <- FIXME add string
-          leaf              = identifier /instance_variable /-alt/ literal,
+          literal            = global /symbol /number /-alt/ regexp,                                                            // <- FIXME add string
+          leaf               = identifier /instance_variable /-alt/ literal,
 
           // Expressions
-          precedence_of     = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
-                              -where [precedence = 1,
-                                      ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
-                                      ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
+          precedence_of      = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
+                               -where [precedence = 1,
+                                       ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
+                                       ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
 
-          is(x, in_set)     = in_set.hasOwnProperty(x),
-          set_of(xs)        = xs *[[x, true]] -object -seq,
-          right_associative = "** ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw /!set_of,
+          is(x, in_set)      = in_set.hasOwnProperty(x),
+          set_of(xs)         = xs *[[x, true]] -object -seq,
+          right_associative  = "** ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw /!set_of,
 
-          fix_precedence(n) = precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
-          zip_operator(xs)  = new node(xs[1], xs[0], xs[2]),
-          expression        = leaf /operator /-bfc/ expression /-map/ zip_operator /-map/ fix_precedence /-alt/ leaf]
+          unary_operator     = alt.apply(null, "~ ! + - not defined?".qw *linear_string -seq),
+          binary_operator    = alt.apply(null, (ops1 + ops2) *linear_string -seq)
+                               -where [ops1 = ". ** * / % + - << >> & | ^ < <= > >= <=> == === != =~ !~ && || .. ... rescue = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw,
+                                       ops2 = "and or if unless while until".qw],
 
-  -using- caterwaul.parser})(caterwaul);
+          fix_precedence(n)  = precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
+          zip_unary(xs)      = new node(xs[0], xs[1]),
+          zip_binary(xs)     = new node(xs[1], xs[0], xs[2]),
+
+          expression(states) = expression(states),
+
+          binary             = leaf /binary_operator /-bfc/ expression /-map/ zip_binary /-map/ fix_precedence,
+          unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
+
+          expression         = binary /unary /-alt/ leaf],
+
+  using [caterwaul.parser]})(caterwaul);
 
 // Generated by SDoc 
 

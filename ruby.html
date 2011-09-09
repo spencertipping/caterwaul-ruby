@@ -2294,7 +2294,7 @@ caterwaul.js_all()(function ($) {
     manyc(p)(states)                 = $.parser.state_matrix(states) /~!step /seq /!$.parser.row_null_states_from -where [iterate = $.parser.step_matrix_mutable_null(p),
                                                                                                                           step(m) = $.parser.has_non_null_states(m) ? iterate(m) : null],
     many(p, join)                    = f -where [f(states) = f(states), f = p /-join/ f /-$.parser.alt/ p],
-    optional(p)                      = p /-$.parser.alt/ zero,
+    optional(p)                      = p /-$.parser.alt/ $.parser.zero,
 
     has_non_null_states(m)           = m |r[r[r.length - 1]] |seq,
 
@@ -2533,76 +2533,77 @@ caterwaul.js_all()(function ($) {
          // any children. This is used by the rmap() method, which needs to build up a parallel tree but will add the children manually. That's what the 'data instanceof this.constructor'
          // check is all about.
 
-         regexp_ctor(data, context) = data instanceof this.constructor ?
-                                        this -se [it.data = data.data, it.length = 0, it.context = data.context] :
-                                        this -se [it.data = data,      it.length = 0, it.context = context,      Array.prototype.slice.call(arguments, 2) *![it.push(x)] -seq],
+         regexp_ctor(xs = arguments) = where [data = xs[0], context = xs[1]]
+                                             [data instanceof this.constructor ?
+                                                this -se [it.data = data.data, it.length = 0, it.context = data.context] :
+                                                this -se [it.data = data,      it.length = 0, it.context = context,      Array.prototype.slice.call(xs, 2) *![it.push(x)] -seq]],
 
-         regexp_methods             = capture [i()                     = this.context.flags.i,
-                                               m()                     = this.context.flags.m,
-                                               g()                     = this.context.flags.g,
+         regexp_methods              = capture [i()                     = this.context.flags.i,
+                                                m()                     = this.context.flags.m,
+                                                g()                     = this.context.flags.g,
 
-                                               match_groups()          = this.context.groups,
+                                                match_groups()          = this.context.groups,
 
-                                               is_zero_width()         = /^[\^\$]$|^\\[Bb]$/.test(this.data) || this.is_positive_lookahead() || this.is_negative_lookahead(),
-                                               is_one_or_more()        = /^\+\??$/.test(this.data),
-                                               is_zero_or_more()       = /^\*\??$/.test(this.data),
-                                               is_optional()           = /^\?$/.test(this.data),
-                                               is_non_greedy()         = /.\?$/.test(this.data),
-                                               is_repetition()         = /^[\+\*\{]\??$|^\?$/.test(this.data),
+                                                is_zero_width()         = /^[\^\$]$|^\\[Bb]$/.test(this.data) || this.is_positive_lookahead() || this.is_negative_lookahead(),
+                                                is_one_or_more()        = /^\+\??$/.test(this.data),
+                                                is_zero_or_more()       = /^\*\??$/.test(this.data),
+                                                is_optional()           = /^\?$/.test(this.data),
+                                                is_non_greedy()         = /.\?$/.test(this.data),
+                                                is_repetition()         = /^[\+\*\{]\??$|^\?$/.test(this.data),
 
-                                               repeated_child()        = /^\{/.test(this.data) ? this[2] : this[0],
+                                                repeated_child()        = /^\{/.test(this.data) ? this[2] : this[0],
 
-                                               is_character_class()    = /^\[/.test(this.data),
-                                               is_single_escape()      = /^\\.+$/.test(this.data),
+                                                is_character_class()    = /^\[/.test(this.data),
+                                                is_single_escape()      = /^\\.+$/.test(this.data),
 
-                                               is_range()              = /^-$/.test(this.data) && this.length === 2,
+                                                is_range()              = /^-$/.test(this.data) && this.length === 2,
 
-                                               is_atom()               = ! this.length,
+                                                is_atom()               = ! this.length,
 
-                                               is_any_group()          = /^\(/.test(this.data),
-                                               is_group()              = /^\($/.test(this.data),
-                                               is_forgetful()          = /^\(\?:$/.test(this.data),
-                                               is_positive_lookahead() = /^\(\?=$/.test(this.data),
-                                               is_negative_lookahead() = /^\(\?!$/.test(this.data),
+                                                is_any_group()          = /^\(/.test(this.data),
+                                                is_group()              = /^\($/.test(this.data),
+                                                is_forgetful()          = /^\(\?:$/.test(this.data),
+                                                is_positive_lookahead() = /^\(\?=$/.test(this.data),
+                                                is_negative_lookahead() = /^\(\?!$/.test(this.data),
 
-                                               is_backreference()      = /^\\$/.test(this.data),
-                                               is_disjunction()        = /^\|$/.test(this.data) && this.length === 2,
-                                               is_join()               = /^,$/.test(this.data)  && this.length === 2,
+                                                is_backreference()      = /^\\$/.test(this.data),
+                                                is_disjunction()        = /^\|$/.test(this.data) && this.length === 2,
+                                                is_join()               = /^,$/.test(this.data)  && this.length === 2,
 
-                                               lower_limit()           = /^\+\??$/.test(this.data)      ? 1 :
-                                                                         /^\*\??$|^\?$/.test(this.data) ? 0 :
-                                                                         /^\{/.test(this.data)          ? this[0].data :
-                                                                                                          raise [new Error('lower limit is undefined for nonrepetitive node #{this}')],
+                                                lower_limit()           = /^\+\??$/.test(this.data)      ? 1 :
+                                                                          /^\*\??$|^\?$/.test(this.data) ? 0 :
+                                                                          /^\{/.test(this.data)          ? this[0].data :
+                                                                                                           raise [new Error('lower limit is undefined for nonrepetitive node #{this}')],
 
-                                               upper_limit()           = /^[\*\+]\??$/.test(this.data) ? Infinity :
-                                                                         /^\?$/.test(this.data)        ? 1 :
-                                                                         /^\{/.test(this.data)         ? this[1].data :
-                                                                                                         raise [new Error('upper limit is undefined for nonrepetitive node #{this}')],
+                                                upper_limit()           = /^[\*\+]\??$/.test(this.data) ? Infinity :
+                                                                          /^\?$/.test(this.data)        ? 1 :
+                                                                          /^\{/.test(this.data)         ? this[1].data :
+                                                                                                          raise [new Error('upper limit is undefined for nonrepetitive node #{this}')],
 
-                                               minimum_length()        = this.is_zero_width()                                 ? 0 :
-                                                                         this.is_single_escape() || this.is_character_class() ? 1 :
-                                                                         this.is_repetition()                                 ? this.lower_limit() * this.repeated_child().minimum_length() :
-                                                                         this.is_group() || this.is_forgetful()               ? this[0].minimum_length() :
-                                                                         this.is_backreference()                              ? this[1].minimum_length() :
-                                                                         this.is_disjunction()                                ? this[0].minimum_length() /-Math.min/ this[1].minimum_length() :
-                                                                         this.is_join()                                       ? this[0].minimum_length() + this[1].minimum_length() :
-                                                                                                                                this.data.length,
+                                                minimum_length()        = this.is_zero_width()                                 ? 0 :
+                                                                          this.is_single_escape() || this.is_character_class() ? 1 :
+                                                                          this.is_repetition()                                 ? this.lower_limit() * this.repeated_child().minimum_length() :
+                                                                          this.is_group() || this.is_forgetful()               ? this[0].minimum_length() :
+                                                                          this.is_backreference()                              ? this[1].minimum_length() :
+                                                                          this.is_disjunction()                                ? this[0].minimum_length() /-Math.min/ this[1].minimum_length() :
+                                                                          this.is_join()                                       ? this[0].minimum_length() + this[1].minimum_length() :
+                                                                                                                                 this.data.length,
 
-                                               toString()              = this.is_any_group()                                ? this.data + this[0].toString() + ')' :
-                                                                         this.is_character_class()                          ? this.data + this[0].toString() + ']' :
-                                                                         this.is_range()                                    ? '#{this[0].toString()}-#{this[1].toString()}' :
-                                                                         this.is_zero_or_more() || this.is_one_or_more() ||
-                                                                                                   this.is_optional()       ? this[0].toString() + this.data :
-                                                                         this.is_repetition()                               ? this[2].toString() +
-                                                                                                                              (this[0].data === this[1].data ? '{#{this[0].data}}' :
-                                                                                                                               this[1].data === Infinity     ? '{#{this[0].data},}' :
-                                                                                                                                                               '{#{this[0].data},#{this[1].data}}') :
-                                                                         this.is_zero_width()                               ? this.data :
-                                                                         this.is_backreference()                            ? '\\#{this[0].data}' :
-                                                                         this.is_disjunction()                              ? '#{this[0].toString()}|#{this[1].toString()}' :
-                                                                         this.is_join()                                     ? '#{this[0].toString()}#{this[1].toString()}' :
-                                                                         this.is_atom()                                     ? /^\w{2,}$/.test(this.data) ? '(?:#{this.data})' : this.data :
-                                                                                                                              this.data],
+                                                toString()              = this.is_any_group()                                ? this.data + this[0].toString() + ')' :
+                                                                          this.is_character_class()                          ? this.data + this[0].toString() + ']' :
+                                                                          this.is_range()                                    ? '#{this[0].toString()}-#{this[1].toString()}' :
+                                                                          this.is_zero_or_more() || this.is_one_or_more() ||
+                                                                                                    this.is_optional()       ? this[0].toString() + this.data :
+                                                                          this.is_repetition()                               ? this[2].toString() +
+                                                                                                                               (this[0].data === this[1].data ? '{#{this[0].data}}' :
+                                                                                                                                this[1].data === Infinity     ? '{#{this[0].data},}' :
+                                                                                                                                                                '{#{this[0].data},#{this[1].data}}') :
+                                                                          this.is_zero_width()                               ? this.data :
+                                                                          this.is_backreference()                            ? '\\#{this[0].data}' :
+                                                                          this.is_disjunction()                              ? '#{this[0].toString()}|#{this[1].toString()}' :
+                                                                          this.is_join()                                     ? '#{this[0].toString()}#{this[1].toString()}' :
+                                                                          this.is_atom()                                     ? /^\w{2,}$/.test(this.data) ? '(?:#{this.data})' : this.data :
+                                                                                                                               this.data],
 
          regexp_parse(r, options)   = join(toplevel, end)({i: 0}) -re [it ? it.v[0] : raise [new Error('caterwaul.regexp(): failed to parse #{r.toString()}')]]
 
@@ -4158,56 +4159,72 @@ how to parse:
 caterwaul.js_all()(function ($) {
   $.ruby.syntax = ctor /-$.syntax_subclass/ methods
 
-  -where [ctor(data) = this -se [it.data = data, it._comments = [], it._position = null, Array.prototype.slice.call(arguments, 1) *![this.push(x)] -seq],
-          methods    = capture [comments()       = this._comments,
-                                comment(c)       = this -se- it._comments.push(c),
-                                position(p)      = p ? this -se [it._position = p] : this._position,
+  -where [ctor(xs = arguments) = xs[0] instanceof this.constructor ?
+                                   this -se [it.data = x.data, it.length = 0, it.metadata_from(x), x *![it.push(x)] -seq] :
+                                   this -se [it.data = xs[0],  it.length = 0, it._comments = [], it._position = null, Array.prototype.slice.call(xs, 1) *![this.push(x)] -seq],
 
-                                replicate(data)  = new this.constructor(data).metadata_from(this) -se [Array.prototype.slice.call(arguments, 1) *![it.push(x)] -seq],
+          methods              = capture [comments()                = this._comments,
+                                          comment(c)                = this -se- it._comments.push(c),
+                                          position(p)               = p ? this -se [it._position = p] : this._position,
 
-                                metadata_from(n) = this -se [it._comments = n._comments, it._position = n._position],
-                                rotate_left()    = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
+                                          replicate(xs = arguments) = new this.constructor(xs[0]).metadata_from(this) -se [Array.prototype.slice.call(xs, 1) *![it.push(x)] -seq],
 
-  $.ruby.parse(s) = $.ruby.parser(new linear_string_state(s.toString())) -re [it[0].value() -when [it.length] -when.it],
+                                          metadata_from(n)          = this -se [it._comments = n._comments, it._position = n._position],
+                                          rotate_left()             = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
+
+  $.ruby.parse(s) = $.ruby.parser([new $.parser.linear_string_state(s.toString())]) -re- it[0].value() /when.it,
   $.ruby.parser = toplevel
 
-  -where [toplevel(states)  = expression(states),
-          node              = $.ruby.syntax,
+  -where [toplevel(states)   = expression(states),
+          node               = $.ruby.syntax,
 
           // Filters
-          co(parser)        = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                      // <- optional line comment before parser
-          wo(parser)        = whitespace /!optional /-bfs/ parser,                                                              // <- optional whitespace before parser
-          r                 = linear_regexp,
+          co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
+          wo(parser)         = whitespace /!optional /-bfs/ parser,                                                             // <- optional whitespace before parser
+          r                  = linear_regexp,
 
           // Terminals
-          terminal(parser)  = parser /-map/ "new node(_)".qf,
-          rt(regexp)        = regexp /!r /!terminal,
-          line_comment      = rt(/#.*[\n\r]{1,2}/),
-          identifier        = rt(/\w+[?!]?/),
-          global            = rt(/\$\w+[?!]?/),
-          instance_variable = rt(/@\w+[?!]?/),
-          symbol            = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
-          number            = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
-          regexp            = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                       // <- FIXME add flags
+          terminal(parser)   = parser /-map/ "new node(_)".qf,
+          rt(regexp)         = regexp /!r /!terminal,
 
-          literal           = global /symbol /number /-alt/ regexp,                                                             // <- FIXME add string
-          leaf              = identifier /instance_variable /-alt/ literal,
+          whitespace         = r(/\s+/),
+          line_comment       = rt(/#.*[\n\r]{1,2}/),
+          identifier         = rt(/\w+[?!]?/),
+          global             = rt(/\$\w+[?!]?/),
+          instance_variable  = rt(/@\w+[?!]?/),
+          symbol             = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
+          number             = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
+          regexp             = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                      // <- FIXME add flags
+
+          literal            = global /symbol /number /-alt/ regexp,                                                            // <- FIXME add string
+          leaf               = identifier /instance_variable /-alt/ literal,
 
           // Expressions
-          precedence_of     = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
-                              -where [precedence = 1,
-                                      ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
-                                      ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
+          precedence_of      = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
+                               -where [precedence = 1,
+                                       ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
+                                       ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
 
-          is(x, in_set)     = in_set.hasOwnProperty(x),
-          set_of(xs)        = xs *[[x, true]] -object -seq,
-          right_associative = "** ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw /!set_of,
+          is(x, in_set)      = in_set.hasOwnProperty(x),
+          set_of(xs)         = xs *[[x, true]] -object -seq,
+          right_associative  = "** ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw /!set_of,
 
-          fix_precedence(n) = precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
-          zip_operator(xs)  = new node(xs[1], xs[0], xs[2]),
-          expression        = leaf /operator /-bfc/ expression /-map/ zip_operator /-map/ fix_precedence /-alt/ leaf]
+          unary_operator     = alt.apply(null, "~ ! + - not defined?".qw *linear_string -seq),
+          binary_operator    = alt.apply(null, (ops1 + ops2) *linear_string -seq)
+                               -where [ops1 = ". ** * / % + - << >> & | ^ < <= > >= <=> == === != =~ !~ && || .. ... rescue = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw,
+                                       ops2 = "and or if unless while until".qw],
 
-  -using- caterwaul.parser})(caterwaul);
+          fix_precedence(n)  = +precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
+          zip_unary(xs)      = new node(xs[0], xs[1]),
+          zip_binary(xs)     = new node(xs[1], xs[0], xs[2]),
+
+          expression(states) = expression(states),
+
+          binary             = leaf /wo(binary_operator) /-bfc/ wo(expression) /-map/ zip_binary /-map/ fix_precedence,
+          unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
+          expression         = binary /unary /-alt/ leaf],
+
+  using [caterwaul.parser]})(caterwaul);
 
 __
 meta::sdoc('js::test', <<'__');
@@ -4217,6 +4234,14 @@ running under (e.g. node.js or a browser).
 
 test_case = function (x) {return caterwaul.ruby(x).structure()};
 
+t('foo');
+t('foo+1');
+t('foo*bar');
+t('foo+bar * bif');
+t('foo + bar + bif');
+t('foo*bar+bif');
+t('foo=bar');
+t('foo=bar=bif');
 t('foo + 1');
 
 __
