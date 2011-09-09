@@ -78,7 +78,7 @@ caterwaul.js_all()(function ($) {
   $.ruby.syntax = ctor /-$.syntax_subclass/ methods
 
   -where [ctor(xs = arguments) = xs[0] instanceof this.constructor ?
-                                   this -se [it.data = x.data, it.length = 0, it.metadata_from(x), x *![it.push(x)] -seq] :
+                                   this -se [it.data = x.data, it.length = 0, it.metadata_from(x), x *![it.push(x)] -seq, where [x = xs[0]]] :
                                    this -se [it.data = xs[0],  it.length = 0, it._comments = [], it._position = null, Array.prototype.slice.call(xs, 1) *![this.push(x)] -seq],
 
           methods              = capture [comments()                = this._comments,
