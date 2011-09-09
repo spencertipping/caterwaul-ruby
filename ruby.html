@@ -3308,11 +3308,6 @@ meta::hook('after-render::ruby.js', <<'__');
 file::write('ruby.js', retrieve('pp::js::ruby'));
 
 __
-meta::hook('after-shell-command::render', <<'__');
-# Keep files up to date automatically.
-render();
-
-__
 meta::hook('before-shell::note-about-module-function', <<'__');
 terminal::info('use the "module" function to create a new Javascript file; e.g:', '',
                '> module foo', '',
