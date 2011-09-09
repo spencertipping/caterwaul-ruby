@@ -25,18 +25,16 @@ caterwaul.ruby = function () {return caterwaul.ruby.parse.apply(this, arguments)
 // it slower but easier to maintain. The other difference is that this parser annotates each node with its original position within the source code, and it records comments. This allows nearly
 // complete reconstruction of the original source from the parse tree. These additional attributes are stored on syntax nodes:
 
-// | caterwaul.ruby('def foo; end').comments       // -> []
-//   caterwaul.ruby('def foo; end').position       // -> {line: 0, column: 0}
+// | caterwaul.ruby('def foo; end').comments()     // -> []
+//   caterwaul.ruby('def foo; end').position()     // -> {line: 0, column: 0}
 //   caterwaul.ruby('def foo; end').data           // -> 'def'
 
 // Comment nodes are stored in the usual kind of form; that is, they're unary nodes whose operator is the type of comment that was used. For example:
 
-// | caterwaul.ruby('# hi there\nfoo').comments[0].data            // -> '#'
-//   caterwaul.ruby('# hi there\nfoo').comments[0][0].data         // -> 'hi there'
-//   caterwaul.ruby('# hi there\nfoo').comments[0].comments        // -> null
-//   caterwaul.ruby('# hi there\nfoo').comments[0].position        // -> {line: 0, column: 0}
-//   caterwaul.ruby('# hi there\nfoo').comments[0][0].position     // -> {line: 0, column: 2}
-//   caterwaul.ruby('# hi there\nfoo').position                    // -> {line: 1, column: 0}
+// | caterwaul.ruby('# hi there\nfoo').comments()[0].data          // -> '# hi there'
+//   caterwaul.ruby('# hi there\nfoo').comments()[0].comments()    // -> []
+//   caterwaul.ruby('# hi there\nfoo').comments()[0].position()    // -> {line: 0, column: 0}
+//   caterwaul.ruby('# hi there\nfoo').position()                  // -> {line: 1, column: 0}
 //   caterwaul.ruby('# hi there\nfoo').data                        // -> 'foo'
 
 // Implementation.
@@ -77,8 +75,58 @@ caterwaul.ruby = function () {return caterwaul.ruby.parse.apply(this, arguments)
 //   {_k1: _v1, _k2: _v2, ...}                             ("{" ("," (":" _k1 _v1) (":" _k2 _v2) ...))
 
 caterwaul.js_all()(function ($) {
-  
-  })($);
+  $.ruby.syntax = ctor /-$.syntax_subclass/ methods
+
+  -where [ctor(data) = this -se [it.data = data, it._comments = [], it._position = null, Array.prototype.slice.call(arguments, 1) *![this.push(x)] -seq],
+          methods    = capture [comments()       = this._comments,
+                                comment(c)       = this -se- it._comments.push(c),
+                                position(p)      = p ? this -se [it._position = p] : this._position,
+
+                                replicate(data)  = new this.constructor(data).metadata_from(this) -se [Array.prototype.slice.call(arguments, 1) *![it.push(x)] -seq],
+
+                                metadata_from(n) = this -se [it._comments = n._comments, it._position = n._position],
+                                rotate_left()    = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
+
+  $.ruby.parse(s) = $.ruby.parser(new linear_string_state(s.toString())) -re [it[0].value() -when [it.length] -when.it],
+  $.ruby.parser = toplevel
+
+  -where [toplevel(states)  = expression(states),
+          node              = $.ruby.syntax,
+
+          // Filters
+          co(parser)        = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                      // <- optional line comment before parser
+          wo(parser)        = whitespace /!optional /-bfs/ parser,                                                              // <- optional whitespace before parser
+          r                 = linear_regexp,
+
+          // Terminals
+          terminal(parser)  = parser /-map/ "new node(_)".qf,
+          rt(regexp)        = regexp /!r /!terminal,
+          line_comment      = rt(/#.*[\n\r]{1,2}/),
+          identifier        = rt(/\w+[?!]?/),
+          global            = rt(/\$\w+[?!]?/),
+          instance_variable = rt(/@\w+[?!]?/),
+          symbol            = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
+          number            = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
+          regexp            = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                       // <- FIXME add flags
+
+          literal           = global /symbol /number /-alt/ regexp,                                                             // <- FIXME add string
+          leaf              = identifier /instance_variable /-alt/ literal,
+
+          // Expressions
+          precedence_of     = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
+                              -where [precedence = 1,
+                                      ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
+                                      ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
+
+          is(x, in_set)     = in_set.hasOwnProperty(x),
+          set_of(xs)        = xs *[[x, true]] -object -seq,
+          right_associative = "** ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw /!set_of,
+
+          fix_precedence(n) = precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
+          zip_operator(xs)  = new node(xs[1], xs[0], xs[2]),
+          expression        = leaf /operator /-bfc/ expression /-map/ zip_operator /-map/ fix_precedence /-alt/ leaf]
+
+  -using- caterwaul.parser})(caterwaul);
 
 // Generated by SDoc 
 
