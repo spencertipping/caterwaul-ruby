@@ -76,61 +76,64 @@ caterwaul.js_all()(function ($) {
                                           metadata_from(n)          = this -se [it._comments = n._comments, it._position = n._position],
                                           rotate_left()             = this[1].replicate(this[1].data, this.replicate(this.data, this[0], this[1][0]), this[1][1])]],
 
-  $.ruby.parse(s) = tree.value().position_map(input /!position_map) -where [input           = s.toString(),
-                                                                            tree            = [new $.parser.linear_string_state(input)] /!$.ruby.parser -re- it[0],
-                                                                            position_map(s) = n[s.length] *[s.charCodeAt(x)] *[{line: l += x === 10, column: c = x === 10 ? -1 : c + 1}] -seq
-                                                                                              -where [l = 0, c = -1]],
+  $.ruby.parse(s) = tree.value().position_map(input /!position_map)
+                    -where [input           = s.toString(),
+                            tree            = [new $.parser.linear_string_state(input)] /!$.ruby.parser -re- it[0],
+                            position_map(s) = n[s.length] *s.charCodeAt *[{line: l += x === 10, column: c = x === 10 ? -1 : c + 1}] -seq -where [l = 0, c = -1]],
+
   $.ruby.parser = toplevel
+                  -where [toplevel(states)   = expression(states),
+                          node               = $.ruby.syntax,
 
-  -where [toplevel(states)   = expression(states),
-          node               = $.ruby.syntax,
+                          // Filters
+                          co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
+                          wo(parser)         = whitespace /!optional /-bfs/ parser,                                                             // <- optional whitespace before parser
+                          si(parser)         = wo(co(parser)),                                                                                  // <- space-insensitive
+                          positional(parser) = parser /-map_state/ "_.value().position(_.position()) -re- _".qf,
+                          r                  = linear_regexp,
 
-          // Filters
-          co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
-          wo(parser)         = whitespace /!optional /-bfs/ parser,                                                             // <- optional whitespace before parser
-          positional(parser) = parser /-map_state/ "_.value().position(_.position()) -re- _".qf,
-          r                  = linear_regexp,
+                          // Terminals
+                          terminal(parser)   = parser /-map/ "new node(_)".qf,
+                          rt(regexp)         = regexp /!r /!terminal /!positional,
 
-          // Terminals
-          terminal(parser)   = parser /-map/ "new node(_)".qf,
-          rt(regexp)         = regexp /!r /!terminal /!positional,
+                          whitespace         = r(/\s+/),
+                          line_comment       = rt(/#.*[\n\r]{1,2}/),
+                          identifier         = rt(/\w+[?!]?/),
+                          global             = rt(/\$\w+[?!]?/),
+                          instance_variable  = rt(/@\w+[?!]?/),
+                          symbol             = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
+                          number             = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
+                          regexp             = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                      // <- FIXME add flags
 
-          whitespace         = r(/\s+/),
-          line_comment       = rt(/#.*[\n\r]{1,2}/),
-          identifier         = rt(/\w+[?!]?/),
-          global             = rt(/\$\w+[?!]?/),
-          instance_variable  = rt(/@\w+[?!]?/),
-          symbol             = r(/:/) /-bfs/ (identifier /global /-alt/ instance_variable) /-map/ "':#{_}'".qf /!terminal,
-          number             = rt(/\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/),
-          regexp             = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                      // <- FIXME add flags
+                          literal            = global /symbol /number /-alt/ regexp,                                                            // <- FIXME add strings
+                          leaf               = identifier /instance_variable /-alt/ literal /!si,
 
-          literal            = global /symbol /number /-alt/ regexp,                                                            // <- FIXME add string
-          leaf               = identifier /instance_variable /-alt/ literal,
+                          // Expressions
+                          precedence_of      = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
+                                               -where [precedence = 1,
+                                                       ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
+                                                       ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
 
-          // Expressions
-          precedence_of      = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
-                               -where [precedence = 1,
-                                       ops1       = ". # u! u~ u+ # ** # u- # * / % # + - # << >> # & # | ^ # > >= < <= # <=> == === != =~ !~ # && # || # .. ... # ? #".qw,
-                                       ops2       = "rescue # = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= # defined? # not # and or # if unless while until".qw],
+                          is(x, in_set)      = in_set.hasOwnProperty(x),
+                          set_of(xs)         = xs *[[x, true]] -object -seq,
+                          right_associative  = "u! u~ u+ ** u- ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||= not".qw /!set_of,
 
-          is(x, in_set)      = in_set.hasOwnProperty(x),
-          set_of(xs)         = xs *[[x, true]] -object -seq,
-          right_associative  = "** ? = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw /!set_of,
+                          one_of(xs)         = alt.apply(null, xs),
 
-          unary_operator     = alt.apply(null, "~ ! + - not defined?".qw *linear_string -seq),
-          binary_operator    = alt.apply(null, (ops1 + ops2) *linear_string -seq)
-                               -where [ops1 = ". ** * / % + - << >> & | ^ < <= > >= <=> == === != =~ !~ && || .. ... rescue = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw,
-                                       ops2 = "and or if unless while until".qw],
+                          unary_operator     = "~ ! + - not defined?".qw *linear_string /seq /!one_of /-map/ "new node(_)".qf /!si,
+                          binary_operator    = (ops1 + ops2) *linear_string             /seq /!one_of /-map/ "new node(_)".qf /!si
+                                               -where [ops1 = ". ** * / % + - << >> & | ^ < <= > >= <=> == === != =~ !~ && || .. ... rescue = += -= *= /= %= **= <<= >>= &= ^= |= &&= ||=".qw,
+                                                       ops2 = "and or if unless while until".qw],
 
-          fix_precedence(n)  = +precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
-          zip_unary(xs)      = new node(xs[0], xs[1]),
-          zip_binary(xs)     = new node(xs[1], xs[0], xs[2]),
+                          fix_precedence(n)  = +precedence_of[n[1].data] + ! is(n.data, right_associative) > precedence_of[n.data] ? n.rotate_left() : n,
+                          zip_unary(xs)      = xs[0].push(xs[1]),
+                          zip_binary(xs)     = xs[1].push(xs[0]).push(xs[2]),
 
-          expression(states) = expression(states),
+                          expression(states) = expression(states),
 
-          binary             = leaf /wo(binary_operator) /-bfc/ wo(expression) /-map/ zip_binary /-map/ fix_precedence,
-          unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
-          expression         = binary /unary /-alt/ leaf],
+                          binary             = leaf /binary_operator /-bfc/ expression /-map/ zip_binary /-map/ fix_precedence,
+                          unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
+                          expression         = binary /unary /-alt/ leaf /!si],
 
   using [caterwaul.parser]})(caterwaul);
 
