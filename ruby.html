@@ -4245,6 +4245,11 @@ caterwaul.js_all()(function ($) {
                           si(parser)         = wo(co(parser)),                                                                                  // <- space-insensitive
                           positional(parser) = parser /-map_state/ "_.value().position(_.position()) -re- _".qf,
                           r                  = linear_regexp,
+                          s                  = linear_string,
+
+                          // Forward definitions
+                          expression(states) = expression(states),
+                          group(states)      = group(states),
 
                           // Terminals
                           terminal(parser)   = parser /-map/ "new node(_)".qf,
@@ -4260,7 +4265,7 @@ caterwaul.js_all()(function ($) {
                           regexp             = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                      // <- FIXME add flags
 
                           literal            = global /symbol /number /-alt/ regexp,                                                            // <- FIXME add strings
-                          leaf               = identifier /instance_variable /-alt/ literal /!si,
+                          leaf               = identifier /group /instance_variable /-alt/ literal /!si,
 
                           // Expressions
                           precedence_of      = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
@@ -4283,7 +4288,7 @@ caterwaul.js_all()(function ($) {
                           zip_unary(xs)      = xs[0].push(xs[1]),
                           zip_binary(xs)     = xs[1].push(xs[0]).push(xs[2]),
 
-                          expression(states) = expression(states),
+                          group              = si(s('(')) /expression /-bfc/ si(s(')')) /-map/ "new node('(', _[1])".qf,
 
                           binary             = leaf /binary_operator /-bfc/ expression /-map/ zip_binary /-map/ fix_precedence,
                           unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
@@ -4309,6 +4314,9 @@ t('baz = foo+bar*bif');
 t('foo=bar');
 t('foo=bar=bif');
 t('foo + 1');
+
+t('foo + (bar + bif)');
+t('foo(bar + bif)');
 
 t('foo #bar\n*bif');
 
