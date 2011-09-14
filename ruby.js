@@ -114,7 +114,7 @@ caterwaul.js_all()(function ($) {
 // to be near 'foo', but the comment ends up playing the role of metadata on the parsed expression rather than being a part of the expression explicitly. (And the only reason we're capturing
 // comments in the first place is so that they can be reconstructed in the output.)
 
-  $.ruby.parser = statements
+  $.ruby.parser = expression
   -where [node = $.ruby.syntax,
 
 // Filters.
@@ -159,9 +159,10 @@ caterwaul.js_all()(function ($) {
   // All of the factors influencing multiline parsing are decided on the first line; nothing on the second line will have an impact. This means that multiline semantics are encoded into
 //   expressions; a binary operator expression, for instance, would work like this:
 
-  // | no_newlines(_expression) no_newlines(_operator) maybe_newlines(_expression)
+  // | no_newlines_after(_expression) maybe_newlines_after(_operator) no_newlines_after(_expression)
 
-  // The binary expression, then, would have to fail in order to accommodate newlines before either the first expression or the operator, which is appropriate.
+  // The binary expression, then, would have to fail in order to accommodate newlines before either expression, which is appropriate. This would cause the line to be reinterpreted as a statement
+//   followed by something else.
 
           // Filters
           co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
@@ -174,6 +175,9 @@ caterwaul.js_all()(function ($) {
           // Forward definitions
           expression(states) = expression(states),
           group(states)      = group(states),
+
+          an_expression      = annotate(expression, 'expression', []),
+          a_group            = annotate(group, 'group', []),
 
           // Terminals
           terminal(parser)   = parser /-map/ "new node(_)".qf,
@@ -189,7 +193,7 @@ caterwaul.js_all()(function ($) {
           regexp             = rt(/\/(?:[^\\\/]|\\.)*\//),                                                                      // <- FIXME add flags
 
           literal            = global /symbol /number /-alt/ regexp,                                                            // <- FIXME add strings
-          leaf               = identifier /group /instance_variable /-alt/ literal /!si,
+          leaf               = identifier /a_group /instance_variable /-alt/ literal /!si,
 
           // Expressions
           precedence_of      = (ops1 + ops2) *[[x, precedence += x === '#']] %[x[0] !== '#'] -object -seq
@@ -212,10 +216,10 @@ caterwaul.js_all()(function ($) {
           zip_unary(xs)      = xs[0].push(xs[1]),
           zip_binary(xs)     = xs[1].push(xs[0]).push(xs[2]),
 
-          group              = si(s('(')) /expression /-bfc/ si(s(')')) /-map/ "new node('(', _[1])".qf,
+          group              = si(s('(')) /an_expression /-bfc/ si(s(')')) /-map/ "new node('(', _[1])".qf,
 
-          binary             = leaf /binary_operator /-bfc/ expression /-map/ zip_binary /-map/ fix_precedence,
-          unary              = unary_operator /-bfc/ expression /-map/ zip_unary,
+          binary             = leaf /binary_operator /-bfc/ an_expression /-map/ zip_binary /-map/ fix_precedence,
+          unary              = unary_operator /-bfc/ an_expression /-map/ zip_unary,
           expression         = binary /unary /-alt/ leaf /!si],
 
   using [caterwaul.parser]})(caterwaul);
