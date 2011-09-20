@@ -1542,15 +1542,19 @@ meta::cached_dependency('caterwaul.std.js', <<'__');
 //   parse trees appropriately.
 
     var infix_function = function (node) {var d = node.data, left, fn;
-                                          if ((d === '/' || d === '|') && (left = node[0]).data === d && left[1] && left[1].data === 'u-' && (fn = left[1][0])) {
-                                            // Pre-expand macros in the left-hand side.
-                                            for (var comma = new $.syntax(','), n = this(left[0]); n.data === d; n = n[0]) comma.push(n[1]);
-                                            comma.push(n);
+                                          if ((d === '/' || d === '|') && (left = node[0]).data === d && left[1] && left[1].data === 'u-' && (fn = left[1][0]))
+                                            return new $.syntax('()', fn, this(node[0][0]).flatten(d).push(this(node[1])).with_data(',').unflatten())};
 
-                                            // The comma arguments are backwards, so reverse them in-place:
-                                            for (var i = 0, l = comma.length, temp; i < l >> 1; ++i) temp = comma[i], comma[i] = comma[l - i - 1], comma[l - i - 1] = temp;
+  // Infix method application.
+//   This is subtly different from infix function application in that a method is called. You might want this when dealing with lots of nested methods, which can otherwise become hard to manage.
+//   Like infix function application, this macro respects precedence and associativity.
 
-                                            return new $.syntax('()', fn, comma.push(this(node[1])).unflatten())}};
+  // | f /g /~a/ h /~b/ i          // -> ((f).a(g, h)).b(i)
+
+    var infix_method = function (node) {var d = node.data, left, fn;
+                                        if ((d === '/' || d === '|') && (left = node[0]).data === d && left[1] && left[1].data === 'u~' && (fn = left[1][0])) {
+                                          var xs = [].slice.call(this(node[0][0]).flatten(d)), object = xs.shift();
+                                          return new $.syntax('()', new $.syntax('.', new $.syntax('(', object), fn), new $.syntax(',', xs, this(node[1])).unflatten())}};
 
   // Postfix function application.
 //   This is a bit simpler than infix function application and is used when you have a unary function. Sometimes it's simpler to think of a function as a filter than as a wrapper, and this macro
@@ -1646,7 +1650,7 @@ meta::cached_dependency('caterwaul.std.js', <<'__');
 
     var each_node = function (node) {return string_interpolator.call(this, node) || literal_modifier.call(this, node) ||
                                             node.length && (modifier.call(this, node) || function_destructure.call(this, node) ||
-                                                            infix_function.call(this, node) || postfix_function.call(this, node))},
+                                                            infix_function.call(this, node) || infix_method.call(this, node) || postfix_function.call(this, node))},
 
         result    = macroexpander ? $(function (node) {return macroexpander.call(this, node) || each_node.call(this, node)}) :
                                     $(each_node);
@@ -2631,6 +2635,7 @@ caterwaul.js_all()(function ($) {
   $.regexp(r, options) = $.regexp.parse.apply(this, arguments),
   $.regexp.syntax      = regexp_ctor /-$.syntax_subclass/ regexp_methods,
   $.regexp.parse       = regexp_parse,
+  $.regexp.compile     = regexp_compile,
 
   where [// Implementation note:
          // Copy-constructor functionality is triggered by passing an instance of the tree into its own constructor. The goal is to obtain a new instance of the same kind of tree, but without
@@ -2645,6 +2650,8 @@ caterwaul.js_all()(function ($) {
          regexp_methods              = capture [i()                     = this.context.flags.i,
                                                 m()                     = this.context.flags.m,
                                                 g()                     = this.context.flags.g,
+
+                                                concat(x)               = new this.constructor(',', this.context, this, x),
 
                                                 match_groups()          = this.context.groups,
 
@@ -2708,6 +2715,8 @@ caterwaul.js_all()(function ($) {
                                                                           this.is_join()                                     ? '#{this[0].toString()}#{this[1].toString()}' :
                                                                           this.is_atom()                                     ? /^\w{2,}$/.test(this.data) ? '(?:#{this.data})' : this.data :
                                                                                                                                this.data],
+
+         regexp_compile(r)          = new RegExp(r.toString(), [r.i() ? 'i' : '', r.m() ? 'm' : '', r.g() ? 'g' : ''].join('')),
 
          regexp_parse(r, options)   = join(toplevel, end)({i: 0}) -re [it ? it.v[0] : raise [new Error('caterwaul.regexp(): failed to parse #{r.toString()}')]]
 
@@ -4424,6 +4433,22 @@ elements of an expression. (This is different from their use within either side 
     assignment_lhs(states) = assignment_lhs(states),  a_assignment_rhs = annotate(assignment_rhs, 'assignment_rhs', []),
     assignment_rhs(states) = assignment_rhs(states),  a_assignment_lhs = annotate(assignment_lhs, 'assignment_lhs', []),
 
+Low-level terminal parsing.
+Ruby has a number of terminal parse cases. These can't contain other things; they include literals of various sorts and identifiers.
+
+    builds_a_node(parser) = parser /-map/ "new node(_)".qf,
+    rp(xs = arguments)    = concatenated /!linear_regexp /!positional /!builds_a_node -where [concatenated = xs *[caterwaul.regexp(x)] /~[x + x0] /seq /!caterwaul.regexp.compile],
+
+    whitespace            = linear_regexp(/\s+/),
+    line_comment          = rp(/#.*[\n\r]{1,2}/),
+
+    numeric_regexp        = /\d+\.\d+(?:[Ee][-+]?\d{1,3})?|\d+|0x[0-9a-fA-F]+|0[0-7]+/,
+    identifier_regexp     = /[a-z0-9]\w*[!?]?/,
+    constant_regexp       = /[A-Z]\w*[!?]?/,
+
+    numeric_literal       = rp(numeric_regexp),         simple_symbol_literal = rp(/:/, identifier_regexp),
+    identifier            = rp(identifier_regexp),
+
 Statement-level parsing.
 A statement takes on one of a few different forms. Most of these forms are actually expressions. The only real difference between an 'expression' and a 'statement', for parsing purposes, is
 how some newlines are treated. This ultimately comes down to the grouping structure. Braced and do-end groups use newline separation, other groups don't. This is encoded by parameterizing all
@@ -4477,8 +4502,6 @@ advantages when it comes to memoizing parse states.
 
                  -where [expression(states) = expression(states), a_expression = annotate(expression, 'expression', [accept]),
 
-                         nth(i) = this /-bfc.apply/ [].slice.call(arguments, 1) /-map/ "_[i]".qf,
-
                          
 
 
@@ -4494,8 +4517,6 @@ advantages when it comes to memoizing parse states.
           terminal(parser)   = parser /-map/ "new node(_)".qf,
           rt(regexp)         = regexp /!r /!terminal /!positional,
 
-          whitespace         = r(/\s+/),
-          line_comment       = rt(/#.*[\n\r]{1,2}/),
           identifier         = rt(/\w+[?!]?/),
           global             = rt(/\$\w+[?!]?/),
           instance_variable  = rt(/@\w+[?!]?/),
