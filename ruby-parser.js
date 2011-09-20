@@ -104,14 +104,15 @@ caterwaul.js_all()(function ($) {
 // Filters.
 // These aren't parsers per se. Rather, they're transformations of parsers that help deal with code-orthogonal elements. Here's a list of filters along with their purposes:
 
-// | 1. lex_insensitive(parser)            <- Indicates that whitespace and comments are not significant to the parser, and parses any whitespace and comments before the parser. Any comments that
+// | 1. newlines_after(parser)             <- Indicates that whitespace and comments are not significant to the parser, and parses any whitespace and comments after the parser. Any comments that
 //                                            are found are then added to the parsed element using .comment().
-//   2. record_position(parser)            <- Parses the element normally, but stores the current string offset onto the element. This will later be resolved using the position table. All
+//   2. no_newlines_after(parser)          <- Indicates that whitespace is OK after a parser, but that newlines and comments aren't.
+//   3. record_position(parser)            <- Parses the element normally, but stores the current string offset onto the element. This will later be resolved using the position table. All
 //                                            elements store their positions; this is just here to factor logic.
 
-// Generally speaking, these three filters are all combined together to form what is called a 'general element'. This is just some syntactic element that is comment and whitespace-insensitive
-// (most Ruby elements fall into this category). There are some exceptions, however. One of these is argument unpacking, which involves a syntactic ambiguity based on the presence or absence of
-// whitespace before the * operator. For example:
+// Generally speaking, these filters are combined to form what is called a 'general element'. This is just some syntactic element that is comment and whitespace-insensitive (most Ruby elements
+// fall into this category). There are some exceptions, however. One of these is argument unpacking, which involves a syntactic ambiguity based on the presence or absence of whitespace before the
+// * operator. For example:
 
 // | f * g  f* g  f*g                      <- local variable f '*' value g
 //   f *g  f(*g)  f(* g)  f( * g)          <- method f applied to argument list g
@@ -148,13 +149,88 @@ caterwaul.js_all()(function ($) {
   // The binary expression, then, would have to fail in order to accommodate newlines before either expression, which is appropriate. This would cause the line to be reinterpreted as a statement
 //   followed by something else.
 
-          // Filters
-          co(parser)         = line_comment /!many /!optional /-bfc/ parser /-map/ "_[1].comment(_[0])".qf,                     // <- optional line comment before parser
-          wo(parser)         = whitespace /!optional /-bfs/ parser,                                                             // <- optional whitespace before parser
-          si(parser)         = wo(co(parser)),                                                                                  // <- space-insensitive
-          positional(parser) = parser /-map_state/ "_.value().position(_.position()) -re- _".qf,
-          r                  = linear_regexp,
-          s                  = linear_string,
+    no_newlines_after(parser) = parser /-bfc/ optional(whitespace) /-map/ "_[0]".qf,
+    newlines_after(parser)    = parser /-bfc/ optional(manyc(line_comment /-alt/ whitespace)) /-map/ "_[0]".qf,                 // <- FIXME add comments to node
+
+    records_position(parser)  = parser /-map_state/ "_.value().position(_.position()) -re- _".qf,
+
+// Toplevel parsers.
+// These are things like statements and expressions. The YARV parser is structured to differentiate the two, which is appropriate because of the varying role of whitespace. In particular,
+// consider the difference between these two expressions:
+
+// | foo \n bar
+//   f(foo \n bar)
+
+// The first is interpreted as two adjacent statements, while the second is a single statement containing a function call that's split across multiple lines. (Actually, YARV in IRB fails to parse
+// the second -- but there isn't anything preventing it from working in theory, as the intent is unambiguous.)
+
+// All of this, though, is to say that there a few different 'top-level' parsers, just like there are in YARV. One is for statements, where whitespace breaks things apart. Another is for groups
+// of some sort, where whitespace has no effect (since the parser is waiting for a group closer), and another is an argument list, where commas are always used as argument separators rather than
+// elements of an expression. (This is different from their use within either side of an assignment, for instance, where they're used to implicitly construct arrays.)
+
+    statements(states)     = statements(states),      a_statements     = annotate(statements,     'statements',     []),
+    argument_list(states)  = argument_list(states),   a_argument_list  = annotate(argument_list,  'argument_list',  []),
+    assignment_lhs(states) = assignment_lhs(states),  a_assignment_rhs = annotate(assignment_rhs, 'assignment_rhs', []),
+    assignment_rhs(states) = assignment_rhs(states),  a_assignment_lhs = annotate(assignment_lhs, 'assignment_lhs', []),
+
+// Statement-level parsing.
+// A statement takes on one of a few different forms. Most of these forms are actually expressions. The only real difference between an 'expression' and a 'statement', for parsing purposes, is
+// how some newlines are treated. This ultimately comes down to the grouping structure. Braced and do-end groups use newline separation, other groups don't. This is encoded by parameterizing all
+// of the group-related parsers by their delimiter type. So, for instance, expression(newline) constructs a parser that accepts newlines but not commas. The accepting parser is threaded down
+// through all levels of expression-type parsing.
+
+// Because it would be silly to reconstruct the entire expression hierarchy every time we build a group, the groups are preconstructed (which basically memoizes it). This might have additional
+// advantages when it comes to memoizing parse states.
+
+  // Dealing with commas.
+//   Another difference worth considering is that the comma plays different roles depending on where it is. The most interesting case happens if we observe commas within a statement but not
+//   inside an argument list; in this case, it has higher precedence than = because it's part of an lvalue or an rvalue:
+
+  // | x, y = 1, 2           <- (x, y) = (1, 2)
+
+  // However, this isn't true of array constructors or argument lists; in both of those cases the comma has lower precedence than =:
+
+  // | f(x, y = 1, 2)        <- f((x), (y = 1), (2))
+//     [x, y = 1, 2]         <- [(x), (x = 1), (2)]
+
+  // So part of the parameterization for expression trees is how to treat the precedence of the comma. In practice, this is done by using two separate operators depending on the context.
+//   Low-precedence commas are just regular commas, and high-precedence ones are stored in nodes whose data is ',h'.
+
+  // Modifiers.
+//   There are various oddities inherited from YARV. One of them is the way argument lists are parsed, which sometimes yields errors. For example, consider these statements:
+
+  // | puts 'foo' unless bar
+//     puts 'foo' rescue bar
+
+  // It is legal to parenthesize the invocations this way, in which case their behavior is preserved:
+
+  // | puts('foo') unless bar
+//     puts('foo') rescue bar
+
+  // However it isn't legal to move the 'unless' and 'rescue' into the argument list proper. The reason is probably that it would have caused problems for the paren-less parse in the first case.
+//   So Ruby won't accept this, even though the semantics are unambiguous:
+
+  // | puts('foo' unless bar)
+//     puts('foo' rescue bar)
+
+  // It's straightforward enough to see why this might be a problem. If the parser were willing to consider an 'unless' or 'rescue' as part of an argument, then it would have interpreted the
+//   first cases to be equivalent to the third, not the second, and that would surprise some people. If they changed the precedence of 'unless' or 'rescue' to be lower than an argument-list comma
+//   to fix this, then the meaning of something like this would be unclear:
+
+  // | f(x, y, z rescue nil)
+
+  // Because of this, Caterwaul's Ruby parser does the YARV thing and uses an entirely separate grammar production for arguments. Unlike YARV, however, this one factors common logic into reusable
+//   functions.
+
+    expression(accept) = expression
+
+                 -where [expression(states) = expression(states), a_expression = annotate(expression, 'expression', [accept]),
+
+                         nth(i) = this /-bfc.apply/ [].slice.call(arguments, 1) /-map/ "_[i]".qf,
+
+                         
+
+
 
           // Forward definitions
           expression(states) = expression(states),
