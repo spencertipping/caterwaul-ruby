@@ -4446,8 +4446,8 @@ Ruby has a number of terminal parse cases. These can't contain other things; the
     identifier_regexp     = /[a-z0-9]\w*[!?]?/,
     constant_regexp       = /[A-Z]\w*[!?]?/,
 
-    numeric_literal       = rp(numeric_regexp),         simple_symbol_literal = rp(/:/, identifier_regexp),
-    identifier            = rp(identifier_regexp),
+    numeric_literal       = rp(numeric_regexp),         simple_symbol_literal     = rp(/:/,  identifier_regexp),
+    identifier            = rp(identifier_regexp),      identifier_symbol_literal = rp(/:@/, identifier_regexp),
 
 Statement-level parsing.
 A statement takes on one of a few different forms. Most of these forms are actually expressions. The only real difference between an 'expression' and a 'statement', for parsing purposes, is
